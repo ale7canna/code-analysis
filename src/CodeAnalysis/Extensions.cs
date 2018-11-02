@@ -7,7 +7,5 @@ namespace CodeAnalysis
         public static bool IsBetween(this int lineNumber, FileLinePositionSpan span) =>
             lineNumber <= span.EndLinePosition.Line &&
             lineNumber >= span.StartLinePosition.Line;
-
     }
-
 }
