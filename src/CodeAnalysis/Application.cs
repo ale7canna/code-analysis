@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using LibGit2Sharp;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -51,6 +52,20 @@ namespace CodeAnalysis
             }
 
             Console.ReadLine();
+        }
+
+        public static void ListAuthors(IEnumerable<string> args)
+        {
+            var arguments = args.ToList();
+            var repository = new Repository(arguments[0]);
+            var authors = repository.Commits.
+                Select(c => (c.Author.Name, c.Author.Email)).Distinct().
+                OrderBy(a => a.Item1 + a.Item2);
+
+            foreach (var author in authors)
+            {
+                Console.WriteLine($"{author.Item1} - {author.Item2}");
+            }
         }
     }
 }
