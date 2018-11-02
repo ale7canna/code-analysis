@@ -11,11 +11,10 @@ namespace CodeAnalysis
 {
     internal static class Application
     {
-        public static void FindMethodOwner(IEnumerable<string> args)
+        public static void FindMethodOwner(List<string> args)
         {
-            var arguments = args.ToList();
-            var filePath = arguments.First();
-            var lineNumber = Convert.ToInt32(arguments.Skip(1).First());
+            var filePath = args.First();
+            var lineNumber = Convert.ToInt32(args.Skip(1).First());
 
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
@@ -26,7 +25,7 @@ namespace CodeAnalysis
             Console.WriteLine($"Line with number: {lineNumber} belongs to {method.Identifier.Text} method");
         }
 
-        public static void PrintMethodsInfo(IEnumerable<string> args)
+        public static void PrintMethodsInfo(List<string> args)
         {
             var filePath = args.First();
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
@@ -54,10 +53,9 @@ namespace CodeAnalysis
             Console.ReadLine();
         }
 
-        public static void ListAuthors(IEnumerable<string> args)
+        public static void ListAuthors(List<string> args)
         {
-            var arguments = args.ToList();
-            var repository = new Repository(arguments[0]);
+            var repository = new Repository(args[0]);
             var authors = repository.Commits.
                 Select(c => (c.Author.Name, c.Author.Email)).Distinct().
                 OrderBy(a => a.Item1 + a.Item2);
@@ -65,6 +63,22 @@ namespace CodeAnalysis
             foreach (var author in authors)
             {
                 Console.WriteLine($"{author.Item1} - {author.Item2}");
+            }
+        }
+
+        public static void ListDiff(List<string> args)
+        {
+            var repository = new Repository(args[0]);
+
+            var t1 = repository.Commits.Skip(2).First().Tree;
+            var t2 = repository.Commits.First().Tree;
+            Patch diff = repository.Diff.Compare<Patch>(t1, t2);
+            Console.WriteLine(diff.Content);
+            foreach (var add in diff)
+            {
+                Console.WriteLine("This is a diff patch");
+                Console.WriteLine(add);
+                Console.WriteLine();
             }
         }
     }

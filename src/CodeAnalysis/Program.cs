@@ -6,17 +6,18 @@ namespace CodeAnalysis
 {
     internal static class Program
     {
-        private static readonly Dictionary<string, Action<IEnumerable<string>>> Features =
-            new Dictionary<string, Action<IEnumerable<string>>>
+        private static readonly Dictionary<string, Action<List<string>>> Features =
+            new Dictionary<string, Action<List<string>>>
             {
                 {"all-methods", Application.PrintMethodsInfo},
                 {"method-owner", Application.FindMethodOwner},
-                {"list-authors", Application.ListAuthors}
+                {"list-authors", Application.ListAuthors},
+                {"list-diff", Application.ListDiff}
             };
 
         private static void Main(string[] args)
         {
-            Features[args[0]](args.Skip(1));
+            Features[args[0]](args.Skip(1).ToList());
         }
     }
 }
