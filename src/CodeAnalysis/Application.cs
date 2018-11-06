@@ -16,13 +16,20 @@ namespace CodeAnalysis
             var filePath = args.First();
             var lineNumber = Convert.ToInt32(args.Skip(1).First());
 
+            var method = GetMethodFromFileAndLine(filePath, lineNumber);
+
+            Console.WriteLine(method == null
+                ? "No method found."
+                : $"Line with number: {lineNumber} belongs to {method.Identifier.Text} method");
+        }
+
+        private static MethodDeclarationSyntax GetMethodFromFileAndLine(string filePath, int lineNumber)
+        {
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
 
-            var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-                .Single(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
-
-            Console.WriteLine($"Line with number: {lineNumber} belongs to {method.Identifier.Text} method");
+            return root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+                .SingleOrDefault(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
         }
 
         public static void PrintMethodsInfo(List<string> args)
@@ -80,6 +87,54 @@ namespace CodeAnalysis
                 Console.WriteLine(add);
                 Console.WriteLine();
             }
+        }
+
+        public static void MethodChanges(List<string> args)
+        {
+            var repository = new Repository(args[0]);
+
+            var c1 = repository.Lookup<Commit>(args[1]);
+            var c2 = repository.Lookup<Commit>(args[2]);
+
+            var result = new Dictionary<string, Dictionary<string, int>>();
+            var compare = repository.Diff.Compare<Patch>(c1.Tree, c2.Tree);
+            foreach (var c in compare)
+            {
+                var fp = $"{args[0]}/{c.Path}";
+                if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
+
+                result.Add(c.Path, new Dictionary<string, int>());
+                var diff = compare[c.Path];
+                foreach (var chunk in diff.Hunks)
+                {
+                    var content = chunk.Content.Split('\n');
+                    for (var k = 0; k < chunk.LinesLength; k++)
+                    {
+                        if (!(content[k].StartsWith('+') || content[k].StartsWith('-')))
+                                                                 continue;
+                                                             var method = GetMethodFromFileAndLine(fp, chunk.LineStart + k);
+                                                             if (method == null)
+                                                                 continue;
+                        if (!result[c.Path].ContainsKey(method.Identifier.Text))
+                            result[c.Path].Add(method.Identifier.Text, 0);
+                        result[c.Path][method.Identifier.Text]++;
+                    }
+                }
+            }
+
+            var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
+            var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
+            foreach (var re in res)
+            {
+                Console.WriteLine($"{NicePrint(re.Item1)} - {NicePrint(re.Item2)} - {re.Item3}");
+            }
+        }
+
+        private static string NicePrint(string s)
+        {
+            var totalWidth = 65;
+            var nicePrint = s.PadRight(totalWidth, ' ');
+            return nicePrint.Substring(nicePrint.Length - totalWidth, totalWidth);
         }
     }
 }

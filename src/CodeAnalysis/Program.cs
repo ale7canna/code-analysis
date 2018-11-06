@@ -12,7 +12,8 @@ namespace CodeAnalysis
                 {"all-methods", Application.PrintMethodsInfo},
                 {"method-owner", Application.FindMethodOwner},
                 {"list-authors", Application.ListAuthors},
-                {"list-diff", Application.ListDiff}
+                {"list-diff", Application.ListDiff},
+                {"count-method-changes", Application.MethodChanges}
             };
 
         private static void Main(string[] args)
