@@ -63,9 +63,8 @@ namespace CodeAnalysis
         public static void ListAuthors(List<string> args)
         {
             var repository = new Repository(args[0]);
-            var authors = repository.Commits.
-                Select(c => (c.Author.Name, c.Author.Email)).Distinct().
-                OrderBy(a => a.Item1 + a.Item2);
+            var authors = repository.Commits.Select(c => (c.Author.Name, c.Author.Email)).Distinct()
+                .OrderBy(a => a.Item1 + a.Item2);
 
             foreach (var author in authors)
             {
@@ -100,21 +99,19 @@ namespace CodeAnalysis
             var compare = repository.Diff.Compare<Patch>(c1.Tree, c2.Tree);
             foreach (var c in compare)
             {
-                var fp = $"{args[0]}/{c.Path}";
+                var fp = $"{args[0]}{Path.DirectorySeparatorChar}{c.Path}";
                 if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
 
                 result.Add(c.Path, new Dictionary<string, int>());
                 var diff = compare[c.Path];
                 foreach (var chunk in diff.Hunks)
                 {
-                    var content = chunk.Content.Split('\n');
-                    for (var k = 0; k < chunk.LinesLength; k++)
+                    var content = chunk.AddedLines.Concat(chunk.RemovedLines);
+                    foreach (var line in content)
                     {
-                        if (!(content[k].StartsWith('+') || content[k].StartsWith('-')))
-                                                                 continue;
-                                                             var method = GetMethodFromFileAndLine(fp, chunk.LineStart + k);
-                                                             if (method == null)
-                                                                 continue;
+                        var method = GetMethodFromFileAndLine(fp, line.LineNumber);
+                        if (method == null)
+                            continue;
                         if (!result[c.Path].ContainsKey(method.Identifier.Text))
                             result[c.Path].Add(method.Identifier.Text, 0);
                         result[c.Path][method.Identifier.Text]++;
@@ -124,6 +121,8 @@ namespace CodeAnalysis
 
             var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
+            Console.WriteLine(
+                $"{NicePrint("File name")} - {NicePrint("Method name")} - {NicePrint("adds/rems count")}");
             foreach (var re in res)
             {
                 Console.WriteLine($"{NicePrint(re.Item1)} - {NicePrint(re.Item2)} - {re.Item3}");
