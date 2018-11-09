@@ -13,7 +13,8 @@ namespace CodeAnalysis
                 {"method-owner", Application.FindMethodOwner},
                 {"list-authors", Application.ListAuthors},
                 {"list-diff", Application.ListDiff},
-                {"count-method-changes", Application.MethodChanges}
+                {"count-method-changes", Application.MethodChanges},
+                {"count-branch-changes", Application.BranchChanges}
             };
 
         private static void Main(string[] args)

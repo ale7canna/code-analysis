@@ -122,18 +122,33 @@ namespace CodeAnalysis
             var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
             Console.WriteLine(
-                $"{NicePrint("File name")} - {NicePrint("Method name")} - {NicePrint("adds/rems count")}");
+                $"{NicePrint("File name", 65)} - {NicePrint("Method name", 65)} - {NicePrint("adds/rems count", 65)}");
             foreach (var re in res)
             {
-                Console.WriteLine($"{NicePrint(re.Item1)} - {NicePrint(re.Item2)} - {re.Item3}");
+                Console.WriteLine($"{NicePrint(re.Item1, 65)} - {NicePrint(re.Item2, 65)} - {re.Item3}");
             }
         }
 
-        private static string NicePrint(string s)
+        private static string NicePrint(string s, int stringWidth)
         {
-            var totalWidth = 65;
+            var totalWidth = stringWidth;
             var nicePrint = s.PadRight(totalWidth, ' ');
             return nicePrint.Substring(nicePrint.Length - totalWidth, totalWidth);
+        }
+
+        public static void BranchChanges(List<string> args)
+        {
+            var repository = new Repository(args[0]);
+
+            var result = repository.Branches.Where(b => b.IsRemote).Select(b => (b.CanonicalName, b.Commits.Count()));
+            result = result.OrderByDescending(kv => kv.Item2);
+
+            Console.WriteLine($"{NicePrint("branch name", 100)} - revs count");
+            foreach (var re in result)
+            {
+                Console.WriteLine($"{NicePrint(re.Item1, 100)} - {re.Item2}");
+            }
+
         }
     }
 }
