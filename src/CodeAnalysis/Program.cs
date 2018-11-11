@@ -14,7 +14,8 @@ namespace CodeAnalysis
                 {"list-authors", Application.ListAuthors},
                 {"list-diff", Application.ListDiff},
                 {"count-method-changes", Application.MethodChanges},
-                {"count-branch-changes", Application.BranchChanges}
+                {"count-branch-changes", Application.BranchChanges},
+                {"count-method-hits", Application.MethodChangesHits}
             };
 
         private static void Main(string[] args)

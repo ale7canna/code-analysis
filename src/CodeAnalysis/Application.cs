@@ -28,8 +28,8 @@ namespace CodeAnalysis
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
 
-            return root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-                .SingleOrDefault(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
+            return root.DescendantNodes().OfType<MethodDeclarationSyntax>().
+                SingleOrDefault(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
         }
 
         public static void PrintMethodsInfo(List<string> args)
@@ -119,6 +119,11 @@ namespace CodeAnalysis
                 }
             }
 
+            PrintResult(result);
+        }
+
+        private static void PrintResult(Dictionary<string, Dictionary<string, int>> result)
+        {
             var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
             Console.WriteLine(
@@ -127,13 +132,6 @@ namespace CodeAnalysis
             {
                 Console.WriteLine($"{NicePrint(re.Item1, 65)} - {NicePrint(re.Item2, 65)} - {re.Item3}");
             }
-        }
-
-        private static string NicePrint(string s, int stringWidth)
-        {
-            var totalWidth = stringWidth;
-            var nicePrint = s.PadRight(totalWidth, ' ');
-            return nicePrint.Substring(nicePrint.Length - totalWidth, totalWidth);
         }
 
         public static void BranchChanges(List<string> args)
@@ -149,6 +147,115 @@ namespace CodeAnalysis
                 Console.WriteLine($"{NicePrint(re.Item1, 100)} - {re.Item2}");
             }
 
+        }
+
+        public static void MethodChangesHits(List<string> args)
+        {
+            var repository = new Repository(args[0]);
+
+            var oldest = repository.Lookup<Commit>(args[1]);
+            var latest = repository.Lookup<Commit>(args[2]);
+            var fromLatest = repository.Head.Commits.SkipWhile(c => !c.Equals(latest));
+            var commits = fromLatest.TakeWhile(c => !c.Equals(oldest)).
+                Concat(new List<Commit>{oldest}).
+                Reverse().
+                ToList();
+
+            var result = new Dictionary<string, Dictionary<string, int>>();
+            for (var k = 1; k < commits.Count; k++)
+            {
+                result = MineMethodsHitsBetweenCommits(result, repository, args[0], commits[k - 1], commits[k]);
+            }
+
+            PrintResult(result);
+        }
+
+        private static Dictionary<string, Dictionary<string, int>> MineMethodsHitsBetweenCommits(
+            Dictionary<string, Dictionary<string, int>> result, Repository repository,
+            string repositoryPath, Commit commitFrom, Commit commitTo)
+        {
+            var compare = repository.Diff.Compare<Patch>(commitFrom.Tree, commitTo.Tree);
+            var res = MineMethodInFileChanges(compare, repositoryPath, repository, commitFrom, commitTo);
+            return JoinResult(result, res);
+        }
+
+        private static Dictionary<string, Dictionary<string, int>> JoinResult(
+            Dictionary<string, Dictionary<string, int>> a,
+            Dictionary<string, Dictionary<string, int>> b)
+        {
+            var result = new Dictionary<string, Dictionary<string, int>>();
+            foreach (var kv in a)
+            {
+                result.Add(kv.Key, kv.Value);
+            }
+
+            foreach (var kv in b)
+            {
+                if (!result.ContainsKey(kv.Key))
+                    result[kv.Key] = new Dictionary<string, int>();
+                foreach (var k in kv.Value)
+                {
+                    if (result[kv.Key].ContainsKey(k.Key))
+                        result[kv.Key][k.Key]++;
+                    else
+                        result[kv.Key][k.Key] = 1;
+                }
+            }
+
+            return result;
+        }
+
+        private static Dictionary<string, Dictionary<string, int>> MineMethodInFileChanges(
+            Patch compare, string repositoryPath, Repository repo, Commit from, Commit to)
+        {
+            var partial = new Dictionary<string, Dictionary<string, int>>();
+            repo.Reset(ResetMode.Hard, from);
+
+            foreach (var changes in compare)
+            {
+                var fp = $"{repositoryPath}{Path.DirectorySeparatorChar}{changes.Path}";
+                if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
+
+                partial.Add(changes.Path, new Dictionary<string, int>());
+                repo.CheckoutPaths(from.Sha, new List<string>{changes.Path});
+                foreach (var chunk in changes.Hunks)
+                {
+                    foreach (var line in chunk.RemovedLines)
+                    {
+                        AddMethodFromLineAndFile(fp, line, partial, changes);
+                    }
+                }
+
+                repo.CheckoutPaths(to.Sha, new List<string>{changes.Path});
+                foreach (var chunk in changes.Hunks)
+                {
+                    foreach (var line in chunk.AddedLines)
+                    {
+                        AddMethodFromLineAndFile(fp, line, partial, changes);
+                    }
+                }
+            }
+
+            repo.Reset(ResetMode.Hard, to);
+            return partial;
+        }
+
+        private static void AddMethodFromLineAndFile(string file, Line line, Dictionary<string, Dictionary<string, int>> result, PatchEntryChanges patch)
+        {
+            var method = GetMethodFromFileAndLine(file, line.LineNumber);
+            if (method == null) return;
+
+            if (!result[patch.Path].ContainsKey(method.Identifier.Text))
+                result[patch.Path].Add(method.Identifier.Text, 1);
+            else
+                result[patch.Path][method.Identifier.Text]++;
+        }
+
+        private static string NicePrint(string s, int stringWidth)
+        {
+            var totalWidth = stringWidth;
+            var nicePrint = s.PadRight(totalWidth, ' ');
+            return nicePrint.Substring(nicePrint.Length - totalWidth, totalWidth);
         }
     }
 }
