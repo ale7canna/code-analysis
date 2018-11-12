@@ -28,8 +28,8 @@ namespace CodeAnalysis
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
 
-            return root.DescendantNodes().OfType<MethodDeclarationSyntax>().
-                SingleOrDefault(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
+            return root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+                .SingleOrDefault(m => lineNumber.IsBetween(m.GetLocation().GetLineSpan()));
         }
 
         public static void PrintMethodsInfo(List<string> args)
@@ -95,26 +95,28 @@ namespace CodeAnalysis
             var c1 = repository.Lookup<Commit>(args[1]);
             var c2 = repository.Lookup<Commit>(args[2]);
 
-            var result = new Dictionary<string, Dictionary<string, int>>();
+            var result = new Dictionary<string, Dictionary<Method, int>>();
             var compare = repository.Diff.Compare<Patch>(c1.Tree, c2.Tree);
             foreach (var c in compare)
             {
                 var fp = $"{args[0]}{Path.DirectorySeparatorChar}{c.Path}";
                 if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
 
-                result.Add(c.Path, new Dictionary<string, int>());
+                result.Add(c.Path, new Dictionary<Method, int>());
                 var diff = compare[c.Path];
                 foreach (var chunk in diff.Hunks)
                 {
                     var content = chunk.AddedLines.Concat(chunk.RemovedLines);
                     foreach (var line in content)
                     {
-                        var method = GetMethodFromFileAndLine(fp, line.LineNumber);
-                        if (method == null)
+                        var methodInfo = GetMethodFromFileAndLine(fp, line.LineNumber);
+                        if (methodInfo == null)
                             continue;
-                        if (!result[c.Path].ContainsKey(method.Identifier.Text))
-                            result[c.Path].Add(method.Identifier.Text, 0);
-                        result[c.Path][method.Identifier.Text]++;
+
+                        var method = Method.From(fp, methodInfo);
+                        if (!result[c.Path].ContainsKey(method))
+                            result[c.Path].Add(method, 0);
+                        result[c.Path][method]++;
                     }
                 }
             }
@@ -122,7 +124,7 @@ namespace CodeAnalysis
             PrintResult(result);
         }
 
-        private static void PrintResult(Dictionary<string, Dictionary<string, int>> result)
+        private static void PrintResult(Dictionary<string, Dictionary<Method, int>> result)
         {
             var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
@@ -130,7 +132,7 @@ namespace CodeAnalysis
                 $"{NicePrint("File name", 65)} - {NicePrint("Method name", 65)} - {NicePrint("adds/rems count", 65)}");
             foreach (var re in res)
             {
-                Console.WriteLine($"{NicePrint(re.Item1, 65)} - {NicePrint(re.Item2, 65)} - {re.Item3}");
+                Console.WriteLine($"{NicePrint(re.Item1, 65)} - {NicePrint(re.Item2.Name, 65)} - {re.Item3}");
             }
         }
 
@@ -146,7 +148,6 @@ namespace CodeAnalysis
             {
                 Console.WriteLine($"{NicePrint(re.Item1, 100)} - {re.Item2}");
             }
-
         }
 
         public static void MethodChangesHits(List<string> args)
@@ -156,12 +157,10 @@ namespace CodeAnalysis
             var oldest = repository.Lookup<Commit>(args[1]);
             var latest = repository.Lookup<Commit>(args[2]);
             var fromLatest = repository.Head.Commits.SkipWhile(c => !c.Equals(latest));
-            var commits = fromLatest.TakeWhile(c => !c.Equals(oldest)).
-                Concat(new List<Commit>{oldest}).
-                Reverse().
-                ToList();
+            var commits = fromLatest.TakeWhile(c => !c.Equals(oldest)).Concat(new List<Commit> {oldest}).Reverse()
+                .ToList();
 
-            var result = new Dictionary<string, Dictionary<string, int>>();
+            var result = new Dictionary<string, Dictionary<Method, int>>();
             for (var k = 1; k < commits.Count; k++)
             {
                 result = MineMethodsHitsBetweenCommits(result, repository, args[0], commits[k - 1], commits[k]);
@@ -170,8 +169,8 @@ namespace CodeAnalysis
             PrintResult(result);
         }
 
-        private static Dictionary<string, Dictionary<string, int>> MineMethodsHitsBetweenCommits(
-            Dictionary<string, Dictionary<string, int>> result, Repository repository,
+        private static Dictionary<string, Dictionary<Method, int>> MineMethodsHitsBetweenCommits(
+            Dictionary<string, Dictionary<Method, int>> result, IRepository repository,
             string repositoryPath, Commit commitFrom, Commit commitTo)
         {
             var compare = repository.Diff.Compare<Patch>(commitFrom.Tree, commitTo.Tree);
@@ -179,11 +178,11 @@ namespace CodeAnalysis
             return JoinResult(result, res);
         }
 
-        private static Dictionary<string, Dictionary<string, int>> JoinResult(
-            Dictionary<string, Dictionary<string, int>> a,
-            Dictionary<string, Dictionary<string, int>> b)
+        private static Dictionary<string, Dictionary<Method, int>> JoinResult(
+            Dictionary<string, Dictionary<Method, int>> a,
+            Dictionary<string, Dictionary<Method, int>> b)
         {
-            var result = new Dictionary<string, Dictionary<string, int>>();
+            var result = new Dictionary<string, Dictionary<Method, int>>();
             foreach (var kv in a)
             {
                 result.Add(kv.Key, kv.Value);
@@ -192,7 +191,7 @@ namespace CodeAnalysis
             foreach (var kv in b)
             {
                 if (!result.ContainsKey(kv.Key))
-                    result[kv.Key] = new Dictionary<string, int>();
+                    result[kv.Key] = new Dictionary<Method, int>();
                 foreach (var k in kv.Value)
                 {
                     if (result[kv.Key].ContainsKey(k.Key))
@@ -205,10 +204,10 @@ namespace CodeAnalysis
             return result;
         }
 
-        private static Dictionary<string, Dictionary<string, int>> MineMethodInFileChanges(
-            Patch compare, string repositoryPath, Repository repo, Commit from, Commit to)
+        private static Dictionary<string, Dictionary<Method, int>> MineMethodInFileChanges(
+            Patch compare, string repositoryPath, IRepository repo, Commit from, Commit to)
         {
-            var partial = new Dictionary<string, Dictionary<string, int>>();
+            var partial = new Dictionary<string, Dictionary<Method, int>>();
             repo.Reset(ResetMode.Hard, from);
 
             foreach (var changes in compare)
@@ -216,22 +215,22 @@ namespace CodeAnalysis
                 var fp = $"{repositoryPath}{Path.DirectorySeparatorChar}{changes.Path}";
                 if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
 
-                partial.Add(changes.Path, new Dictionary<string, int>());
-                repo.CheckoutPaths(from.Sha, new List<string>{changes.Path});
+                partial.Add(changes.Path, new Dictionary<Method, int>());
+                repo.CheckoutPaths(from.Sha, new List<string> {changes.Path});
                 foreach (var chunk in changes.Hunks)
                 {
                     foreach (var line in chunk.RemovedLines)
                     {
-                        AddMethodFromLineAndFile(fp, line, partial, changes);
+                        AddMethodFromLineAndFile(partial, fp, line, changes);
                     }
                 }
 
-                repo.CheckoutPaths(to.Sha, new List<string>{changes.Path});
+                repo.CheckoutPaths(to.Sha, new List<string> {changes.Path});
                 foreach (var chunk in changes.Hunks)
                 {
                     foreach (var line in chunk.AddedLines)
                     {
-                        AddMethodFromLineAndFile(fp, line, partial, changes);
+                        partial = AddMethodFromLineAndFile(partial, fp, line, changes);
                     }
                 }
             }
@@ -240,15 +239,20 @@ namespace CodeAnalysis
             return partial;
         }
 
-        private static void AddMethodFromLineAndFile(string file, Line line, Dictionary<string, Dictionary<string, int>> result, PatchEntryChanges patch)
+        private static Dictionary<string, Dictionary<Method, int>> AddMethodFromLineAndFile(
+            Dictionary<string, Dictionary<Method, int>> result, string file, Line line, PatchEntryChanges patch)
         {
-            var method = GetMethodFromFileAndLine(file, line.LineNumber);
-            if (method == null) return;
+            var methodInfo = GetMethodFromFileAndLine(file, line.LineNumber);
+            if (methodInfo == null) return result;
 
-            if (!result[patch.Path].ContainsKey(method.Identifier.Text))
-                result[patch.Path].Add(method.Identifier.Text, 1);
+            var method = Method.From(file, methodInfo);
+
+            if (!result[patch.Path].ContainsKey(method))
+                result[patch.Path].Add(method, 1);
             else
-                result[patch.Path][method.Identifier.Text]++;
+                result[patch.Path][method]++;
+
+            return result;
         }
 
         private static string NicePrint(string s, int stringWidth)
@@ -262,9 +266,8 @@ namespace CodeAnalysis
         {
             var directory = args.First();
             var files = Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories);
-            var result = files.SelectMany(MethodsInfo).
-                OrderByDescending(i => i.Item6).
-                Select(i => $"{i.Item1};{i.Item2}({string.Join(',', i.Item3)});{i.Item4};{i.Item5};{i.Item6}");
+            var result = files.SelectMany(MethodsInfo).OrderByDescending(i => i.Item4).Select(i =>
+                $"{i.Item1.FilePath};{i.Item1.Name}({string.Join(',', i.Item1.Parameters)});{i.Item2};{i.Item3};{i.Item4}");
             Console.WriteLine("file;method;start;end;length");
             foreach (var row in result)
             {
@@ -272,20 +275,18 @@ namespace CodeAnalysis
             }
         }
 
-        private static List<(string, string, List<string>, int, int, int)> MethodsInfo(string filePath)
+        private static List<(Method, int, int, int)> MethodsInfo(string filePath)
         {
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
 
             var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
             return methods.Select(m => (
-                    filePath,
-                    m.Identifier.Text,
-                    m.ParameterList.Parameters.Select(p => p.Type.ToString()).ToList(),
-                    m.GetLocation().GetLineSpan().StartLinePosition.Line,
-                    m.GetLocation().GetLineSpan().EndLinePosition.Line,
-                    m.GetLocation().GetLineSpan().EndLinePosition.Line - m.GetLocation().GetLineSpan().StartLinePosition.Line)).
-                ToList();
+                Method.From(filePath, m),
+                m.GetLocation().GetLineSpan().StartLinePosition.Line,
+                m.GetLocation().GetLineSpan().EndLinePosition.Line,
+                m.GetLocation().GetLineSpan().EndLinePosition.Line -
+                m.GetLocation().GetLineSpan().StartLinePosition.Line)).ToList();
         }
     }
 }
