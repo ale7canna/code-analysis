@@ -15,7 +15,8 @@ namespace CodeAnalysis
                 {"list-diff", Application.ListDiff},
                 {"count-method-changes", Application.MethodChanges},
                 {"count-branch-changes", Application.BranchChanges},
-                {"count-method-hits", Application.MethodChangesHits}
+                {"count-method-hits", Application.MethodChangesHits},
+                {"repo-methods", Application.RepositoryMethods}
             };
 
         private static void Main(string[] args)

@@ -257,5 +257,35 @@ namespace CodeAnalysis
             var nicePrint = s.PadRight(totalWidth, ' ');
             return nicePrint.Substring(nicePrint.Length - totalWidth, totalWidth);
         }
+
+        public static void RepositoryMethods(List<string> args)
+        {
+            var directory = args.First();
+            var files = Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories);
+            var result = files.SelectMany(MethodsInfo).
+                OrderByDescending(i => i.Item6).
+                Select(i => $"{i.Item1};{i.Item2}({string.Join(',', i.Item3)});{i.Item4};{i.Item5};{i.Item6}");
+            Console.WriteLine("file;method;start;end;length");
+            foreach (var row in result)
+            {
+                Console.WriteLine(row);
+            }
+        }
+
+        private static List<(string, string, List<string>, int, int, int)> MethodsInfo(string filePath)
+        {
+            var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
+            var root = tree.GetCompilationUnitRoot();
+
+            var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+            return methods.Select(m => (
+                    filePath,
+                    m.Identifier.Text,
+                    m.ParameterList.Parameters.Select(p => p.Type.ToString()).ToList(),
+                    m.GetLocation().GetLineSpan().StartLinePosition.Line,
+                    m.GetLocation().GetLineSpan().EndLinePosition.Line,
+                    m.GetLocation().GetLineSpan().EndLinePosition.Line - m.GetLocation().GetLineSpan().StartLinePosition.Line)).
+                ToList();
+        }
     }
 }
