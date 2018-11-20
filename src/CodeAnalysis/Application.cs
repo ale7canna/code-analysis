@@ -126,7 +126,7 @@ namespace CodeAnalysis
 
         private static void PrintResult(Dictionary<string, Dictionary<Method, int>> result)
         {
-            var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv.Key, kv1.Key, kv1.Value)));
+            var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv1.Key.FilePath, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
             Console.WriteLine(
                 $"{NicePrint("File name", 65)} - {NicePrint("Method name", 65)} - {NicePrint("adds/rems count", 65)}");
