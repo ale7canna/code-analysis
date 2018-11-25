@@ -128,11 +128,10 @@ namespace CodeAnalysis
         {
             var keyValuePairs = result.SelectMany(kv => kv.Value.Select(kv1 => (kv1.Key.FilePath, kv1.Key, kv1.Value)));
             var res = keyValuePairs.OrderByDescending(kv => kv.Item3);
-            Console.WriteLine(
-                $"{NicePrint("File name", 65)} - {NicePrint("Method name", 65)} - {NicePrint("adds/rems count", 65)}");
+            Console.WriteLine("file;method;changes(add/rems count)");
             foreach (var re in res)
             {
-                Console.WriteLine($"{NicePrint(re.Item1, 65)} - {NicePrint(re.Item2.Name, 65)} - {re.Item3}");
+                Console.WriteLine($"{re.Item1};{re.Item2};{re.Item3}");
             }
         }
 
@@ -267,7 +266,7 @@ namespace CodeAnalysis
             var directory = args.First();
             var files = Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories);
             var result = files.SelectMany(MethodsInfo).OrderByDescending(i => i.Item4).Select(i =>
-                $"{i.Item1.FilePath};{i.Item1.Name}({string.Join(',', i.Item1.Parameters)});{i.Item2};{i.Item3};{i.Item4}");
+                $"{i.Item1.FilePath};{i.Item1};{i.Item2};{i.Item3};{i.Item4}");
             Console.WriteLine("file;method;start;end;length");
             foreach (var row in result)
             {
