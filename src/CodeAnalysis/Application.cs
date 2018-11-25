@@ -131,7 +131,7 @@ namespace CodeAnalysis
             Console.WriteLine("file;method;changes(add/rems count)");
             foreach (var re in res)
             {
-                Console.WriteLine($"{re.Item1};{re.Item2};{re.Item3}");
+                Console.WriteLine($"{re.Item1};{re.Item2.Signature};{re.Item3}");
             }
         }
 
@@ -265,8 +265,8 @@ namespace CodeAnalysis
         {
             var directory = args.First();
             var files = Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories);
-            var result = files.SelectMany(MethodsInfo).OrderByDescending(i => i.Item4).Select(i =>
-                $"{i.Item1.FilePath};{i.Item1};{i.Item2};{i.Item3};{i.Item4}");
+            var result = files.SelectMany(MethodsInfo).OrderByDescending(i => i.LenghtInLines).Select(i =>
+                $"{i.FilePath};{i.Signature};{i.StartLine};{i.EndLine};{i.LenghtInLines}");
             Console.WriteLine("file;method;start;end;length");
             foreach (var row in result)
             {
@@ -274,18 +274,12 @@ namespace CodeAnalysis
             }
         }
 
-        private static List<(Method, int, int, int)> MethodsInfo(string filePath)
+        private static IEnumerable<Method> MethodsInfo(string filePath)
         {
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
             var root = tree.GetCompilationUnitRoot();
 
             var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
-            return methods.Select(m => (
-                Method.From(filePath, m),
-                m.GetLocation().GetLineSpan().StartLinePosition.Line,
-                m.GetLocation().GetLineSpan().EndLinePosition.Line,
-                m.GetLocation().GetLineSpan().EndLinePosition.Line -
-                m.GetLocation().GetLineSpan().StartLinePosition.Line)).ToList();
-        }
+            return methods.Select(m => Method.From(filePath, m));
     }
 }
