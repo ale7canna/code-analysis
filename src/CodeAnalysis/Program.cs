@@ -16,7 +16,8 @@ namespace CodeAnalysis
                 {"count-method-changes", Application.MethodChanges},
                 {"count-branch-changes", Application.BranchChanges},
                 {"count-method-hits", Application.MethodChangesHits},
-                {"repo-methods", Application.RepositoryMethods}
+                {"repo-methods", Application.RepositoryMethods},
+                {"join-results-on-methods", Application.JoinMethodsInformation}
             };
 
         private static void Main(string[] args)

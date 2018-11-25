@@ -266,8 +266,8 @@ namespace CodeAnalysis
             var directory = args.First();
             var files = Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories);
             var result = files.SelectMany(MethodsInfo).OrderByDescending(i => i.LenghtInLines).Select(i =>
-                $"{i.FilePath};{i.Signature};{i.StartLine};{i.EndLine};{i.LenghtInLines}");
-            Console.WriteLine("file;method;start;end;length");
+                $"{i.FilePath};{i.Signature};{i.LenghtInLines}");
+            Console.WriteLine("file;method;length");
             foreach (var row in result)
             {
                 Console.WriteLine(row);
@@ -281,5 +281,31 @@ namespace CodeAnalysis
 
             var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
             return methods.Select(m => Method.From(filePath, m));
+        }
+
+        public static void JoinMethodsInformation(List<string> args)
+        {
+            var methodHits = ReadCsv(args[0]);
+            var methodInRepo = ReadCsv(args[1]);
+
+            var result = methodHits.Join(methodInRepo,
+                hits => (hits.file, hits.method),
+                repo => (repo.file, repo.method),
+                (m, r) => (m.file, m.method, m.value * r.value));
+
+            Console.WriteLine("file;method;changes * length");
+            foreach (var res in result)
+            {
+                Console.WriteLine($"{res.Item1};{res.Item2};{res.Item3}");
+            }
+        }
+
+        private static IEnumerable<(string file, string method, int value)> ReadCsv(string filepath)
+        {
+            return File.ReadAllLines(filepath).
+                Skip(1).
+                Select(l => l.Split(';')).
+                Select(l => (l[0], l[1], int.Parse(l[2])));
+        }
     }
 }
