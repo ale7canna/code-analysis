@@ -1,10 +1,9 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeAnalysis
 {
-    internal class Method
+    public class Method
     {
         public static Method From(string filePath, MethodDeclarationSyntax m)
         {

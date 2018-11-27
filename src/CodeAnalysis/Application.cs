@@ -16,16 +16,16 @@ namespace CodeAnalysis
             var filePath = args.First();
             var lineNumber = Convert.ToInt32(args.Skip(1).First());
 
-            var method = GetMethodFromFileAndLine(filePath, lineNumber);
+            var method = File.ReadAllText(filePath).GetMethodFromLine(lineNumber);
 
             Console.WriteLine(method == null
                 ? "No method found."
                 : $"Line with number: {lineNumber} belongs to {method.Identifier.Text} method");
         }
 
-        private static MethodDeclarationSyntax GetMethodFromFileAndLine(string filePath, int lineNumber)
+        private static MethodDeclarationSyntax GetMethodFromFileAndLine(int lineNumber, string textToParse)
         {
-            var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(filePath));
+            var tree = CSharpSyntaxTree.ParseText(textToParse);
             var root = tree.GetCompilationUnitRoot();
 
             return root.DescendantNodes().OfType<MethodDeclarationSyntax>()
@@ -109,7 +109,7 @@ namespace CodeAnalysis
                     var content = chunk.AddedLines.Concat(chunk.RemovedLines);
                     foreach (var line in content)
                     {
-                        var methodInfo = GetMethodFromFileAndLine(fp, line.LineNumber);
+                        var methodInfo = GetMethodFromFileAndLine(line.LineNumber, File.ReadAllText(fp));
                         if (methodInfo == null)
                             continue;
 
@@ -151,30 +151,35 @@ namespace CodeAnalysis
 
         public static void MethodChangesHits(List<string> args)
         {
-            var repository = new Repository(args[0]);
+            var repository = new Repository(args[0].NormalizePath());
 
             var oldest = repository.Lookup<Commit>(args[1]);
             var latest = repository.Lookup<Commit>(args[2]);
-            var fromLatest = repository.Head.Commits.SkipWhile(c => !c.Equals(latest));
-            var commits = fromLatest.TakeWhile(c => !c.Equals(oldest)).Concat(new List<Commit> {oldest}).Reverse()
+            var commits = repository.Head.Commits
+                .SkipWhile(c => !c.Equals(latest))
+                .TakeWhile(c => !c.Equals(oldest))
+                .Concat(new List<Commit> {oldest})
+                .Reverse()
                 .ToList();
 
-            var result = new Dictionary<string, Dictionary<Method, int>>();
-            for (var k = 1; k < commits.Count; k++)
-            {
-                result = MineMethodsHitsBetweenCommits(result, repository, args[0], commits[k - 1], commits[k]);
-            }
+            var result = ProcessResult(commits, repository);
 
             PrintResult(result);
         }
 
-        private static Dictionary<string, Dictionary<Method, int>> MineMethodsHitsBetweenCommits(
-            Dictionary<string, Dictionary<Method, int>> result, IRepository repository,
-            string repositoryPath, Commit commitFrom, Commit commitTo)
+        private static Dictionary<string, Dictionary<Method, int>> ProcessResult(List<Commit> commits, IRepository repository)
         {
-            var compare = repository.Diff.Compare<Patch>(commitFrom.Tree, commitTo.Tree);
-            var res = MineMethodInFileChanges(compare, repositoryPath, repository, commitFrom, commitTo);
-            return JoinResult(result, res);
+            var result = new Dictionary<string, Dictionary<Method, int>>();
+            for (var k = 1; k < commits.Count; k++)
+            {
+                var commitFrom = commits[k - 1];
+                var commitTo = commits[k];
+                var compare = repository.Diff.Compare<Patch>(commitFrom.Tree, commitTo.Tree);
+                var res = MineMethodsChangedBetweenCommits(compare, commitFrom, commitTo);
+                result = JoinResult(result, res);
+            }
+
+            return result;
         }
 
         private static Dictionary<string, Dictionary<Method, int>> JoinResult(
@@ -203,55 +208,26 @@ namespace CodeAnalysis
             return result;
         }
 
-        private static Dictionary<string, Dictionary<Method, int>> MineMethodInFileChanges(
-            Patch compare, string repositoryPath, IRepository repo, Commit from, Commit to)
+        private static Dictionary<string, Dictionary<Method, int>> MineMethodsChangedBetweenCommits(
+            Patch compare, Commit from, Commit to)
         {
             var partial = new Dictionary<string, Dictionary<Method, int>>();
-            repo.Reset(ResetMode.Hard, from);
 
             foreach (var changes in compare)
             {
-                var fp = $"{repositoryPath}{Path.DirectorySeparatorChar}{changes.Path}";
-                if (!(File.Exists(fp) && fp.EndsWith(".cs"))) continue;
+                if (!changes.Path.EndsWith(".cs")) continue;
 
-                partial.Add(changes.Path, new Dictionary<Method, int>());
-                repo.CheckoutPaths(from.Sha, new List<string> {changes.Path});
-                foreach (var chunk in changes.Hunks)
-                {
-                    foreach (var line in chunk.RemovedLines)
-                    {
-                        AddMethodFromLineAndFile(partial, fp, line, changes);
-                    }
-                }
+                var partialFrom = from.GetInvolvedMethodInFile(changes, h => h.RemovedLines);
+                var partialTo = to.GetInvolvedMethodInFile(changes, h => h.AddedLines);
+                var p = partialFrom.Concat(partialTo)
+                    .Where(i => i != null)
+                    .GroupBy(m => m, (m, ms) => (m, ms.Count()))
+                    .ToDictionary(t => t.Item1, _ => 1);
 
-                repo.CheckoutPaths(to.Sha, new List<string> {changes.Path});
-                foreach (var chunk in changes.Hunks)
-                {
-                    foreach (var line in chunk.AddedLines)
-                    {
-                        partial = AddMethodFromLineAndFile(partial, fp, line, changes);
-                    }
-                }
+                partial.Add(changes.Path, p);
             }
 
-            repo.Reset(ResetMode.Hard, to);
             return partial;
-        }
-
-        private static Dictionary<string, Dictionary<Method, int>> AddMethodFromLineAndFile(
-            Dictionary<string, Dictionary<Method, int>> result, string file, Line line, PatchEntryChanges patch)
-        {
-            var methodInfo = GetMethodFromFileAndLine(file, line.LineNumber);
-            if (methodInfo == null) return result;
-
-            var method = Method.From(file, methodInfo);
-
-            if (!result[patch.Path].ContainsKey(method))
-                result[patch.Path].Add(method, 1);
-            else
-                result[patch.Path][method]++;
-
-            return result;
         }
 
         private static string NicePrint(string s, int stringWidth)
